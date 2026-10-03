@@ -1,73 +1,65 @@
 <!DOCTYPE html>
-<html lang="id" data-theme="dark">
+<html lang="id" data-theme="light">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Voice Changer AI · RVC</title>
-    <meta name="description" content="RVC Voice Changer — convert audio dengan model AI Anda sendiri.">
+    <title>Voice Changer AI Pro · RVC</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;550;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <!-- ════════ TOP BAR ════════ -->
     <header class="topbar">
         <div class="brand">
             <div class="brand-mark">🎤</div>
             <div>
-                <div class="brand-name">Voice Changer</div>
+                <div class="brand-name">Voice Changer Pro</div>
             </div>
-            <span class="brand-sub">RVC</span>
+            <span class="brand-sub">RVC Engine</span>
         </div>
         <div class="topbar-actions">
-            <button class="icon-btn" id="themeToggle" title="Ganti tema" aria-label="Ganti tema">🌙</button>
+            <button class="icon-btn" id="themeToggle" title="Toggle theme">🌙</button>
         </div>
     </header>
 
-    <!-- ════════ MAIN CARD ════════ -->
     <main class="container">
         <div class="page-title">
-            <h1>Voice Conversion</h1>
-            <p>Unggah audio, pilih model, hasilkan suara baru dengan RVC AI.</p>
+            <h1>🎙️ Voice Conversion</h1>
+            <p>Upload audio, pilih model, hasilkan suara baru dengan AI kualitas terbaik.</p>
         </div>
 
-        <!-- ════════ MODEL MANAGEMENT ════════ -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- MODEL MANAGER SECTION -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
         <section class="section model-manager">
-            <div class="section-head">
-                <span class="section-title">Model</span>
-            </div>
-
             <div class="panel">
-                <div class="notice notice-tutorial">
-                    <strong>💡 Belum punya model?</strong>
+                <div class="notice notice-info">
+                    <strong>💡 Cara Pakai:</strong>
                     <ol>
-                        <li>Download model RVC (file <code>.pth</code> + <code>.index</code>) di
-                            <a href="https://voice-models.com/" target="_blank" rel="noopener" class="link-external">voice-models.com ↗</a>
-                        </li>
-                        <li>Klik <strong>Upload Model</strong>, pilih file <code>.pth</code> (wajib) dan <code>.index</code> (opsional)</li>
-                        <li>Pilih model dari dropdown lalu klik <strong>Apply</strong></li>
+                        <li>Download model RVC (file <code>.pth</code> + <code>.index</code>) dari <a href="https://voice-models.com/" target="_blank" class="link-external">voice-models.com ↗</a></li>
+                        <li>Klik <strong>Upload Model</strong>, pilih file .pth dan .index sekaligus</li>
+                        <li>Sistem akan otomatis memasangkan model dengan index yang cocok</li>
+                        <li>Klik <strong>Load</strong> pada model untuk mengaktifkannya</li>
                     </ol>
                 </div>
 
-                <div class="notice notice-info">
-                    <strong>📌 Tip:</strong>
-                    Pasangkan <code>.index</code> dengan nama yang sama persis dengan model
-                    (mis. <code>anime_girl.pth</code> + <code>anime_girl.index</code>) untuk hasil terbaik.
+                <div class="notice notice-tip">
+                    <strong>✨ Auto-Pairing:</strong> Model dan index dengan nama yang sama akan otomatis terhubung. Contoh: <code>artist_v2.pth</code> + <code>artist_v2.index</code>
                 </div>
 
+                <!-- Compact Model Selectors -->
                 <div class="model-selectors">
                     <div class="selector-group">
-                        <label for="pthModel">Model Utama (.pth) <span class="required">*</span></label>
+                        <label for="pthModel">Model (.pth)</label>
                         <select id="pthModel">
                             <option value="">— Pilih Model —</option>
                         </select>
                     </div>
-
                     <div class="selector-group">
-                        <label for="indexModel">Index File (.index) · opsional</label>
+                        <label for="indexModel">Index (.index)</label>
                         <select id="indexModel">
-                            <option value="null">— Tanpa Index —</option>
+                            <option value="null">— Auto (Cari Index) —</option>
                         </select>
                     </div>
                 </div>
@@ -75,108 +67,109 @@
                 <div class="model-actions">
                     <button class="btn btn-apply" id="applyModelBtn">✓ Apply Model</button>
                     <button class="btn btn-upload" id="uploadModelBtn">↑ Upload Model</button>
-                    <input type="file" id="modelFileInput" class="file-input" accept=".pth,.index">
+                    <input type="file" id="modelFileInput" accept=".pth,.index" multiple hidden>
                 </div>
 
-                <div id="modelStatus">Memuat model…</div>
-
-                <div class="model-list" id="modelList">
-                    <div class="empty-state">Memuat model…</div>
-                </div>
+                <div id="modelStatus"></div>
+                
+                <!-- Model Cards List (Applio-style) -->
+                <div class="model-list" id="modelList"></div>
             </div>
         </section>
 
-        <!-- ════════ AUDIO UPLOAD ════════ -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- AUDIO INPUT SECTION -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
         <section class="section">
             <div class="section-head">
-                <span class="section-title">Audio Input</span>
+                <h2 class="section-title">Audio Input</h2>
             </div>
-
             <div class="upload-area" id="uploadArea">
                 <div class="upload-icon">🎵</div>
                 <div class="upload-title">Drop file audio di sini, atau klik untuk memilih</div>
-                <div class="upload-hint">MP3 · WAV · M4A · AAC — tanpa batas ukuran</div>
-                <input type="file" id="audioFile" class="file-input" accept="audio/*,.mp3,.wav,.m4a,.aac">
+                <div class="upload-hint">MP3 · WAV · M4A · AAC · FLAC · OGG — tanpa batas ukuran</div>
                 <div class="file-name"></div>
+                <input type="file" id="audioFile" class="file-input" accept="audio/*">
             </div>
 
-            <div class="preview-section" id="previewSection" style="margin-top: 10px;">
+            <div class="preview-section" id="previewSection">
                 <h3>Original Audio</h3>
                 <audio id="audioPreview" controls></audio>
             </div>
         </section>
 
-        <!-- ════════ CONTROLS ════════ -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- PARAMETERS SECTION -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
         <section class="section">
             <div class="section-head">
-                <span class="section-title">Parameters</span>
-                <button class="btn btn-secondary" id="resetParamsBtn"
-                        style="padding: 5px 12px; font-size: 0.74rem; font-family: var(--mono);"
-                        title="Reset ke default">↺ reset</button>
+                <h2 class="section-title">Parameters</h2>
+                <button class="btn btn-secondary btn-sm" id="resetParamsBtn" type="button">↺ reset</button>
             </div>
-
             <div class="controls">
+                <!-- Pitch -->
                 <div class="control-group">
                     <div class="control-label">
                         <span>🎵 Pitch</span>
-                        <input type="number" id="pitchValue" class="control-value-input" value="0" min="-24" max="24">
+                        <input type="number" id="pitchValue" class="control-value-input" value="0" min="-24" max="24" step="1">
                     </div>
                     <input type="range" id="pitch" min="-24" max="24" value="0" step="1">
-                    <div class="control-hint">− = lebih rendah, + = lebih tinggi</div>
+                    <div class="control-hint">− = lebih rendah, + = lebih tinggi (Pria → Wanita: +12)</div>
                 </div>
 
+                <!-- Index Rate -->
                 <div class="control-group">
                     <div class="control-label">
                         <span>🔍 Index Rate</span>
-                        <input type="number" id="indexRateValue" class="control-value-input" value="0.75" min="0" max="1" step="0.01">
+                        <input type="number" id="indexRateValue" class="control-value-input" value="0.75" min="0" max="1" step="0.05">
                     </div>
-                    <input type="range" id="indexRate" min="0" max="1" value="0.75" step="0.01">
-                    <div class="control-hint">Pengaruh timbre model (0–1)</div>
+                    <input type="range" id="indexRate" min="0" max="1" value="0.75" step="0.05">
+                    <div class="control-hint">Pengaruh timbre model (0.75 = optimal dengan index)</div>
                 </div>
 
-                <div class="control-group">
+                <!-- F0 Method -->
+                <div class="control-group full-width">
                     <div class="control-label">
-                        <span>🔊 RMS Mix</span>
-                        <input type="number" id="rmsMixRateValue" class="control-value-input" value="0.25" min="0" max="1" step="0.01">
+                        <span>🎼 F0 Extraction Method</span>
                     </div>
-                    <input type="range" id="rmsMixRate" min="0" max="1" value="0.25" step="0.01">
-                    <div class="control-hint">Energi asli vs model</div>
+                    <select id="f0Method" class="f0-select">
+                        <option value="rmvpe" selected>🏆 rmvpe (Best Quality — Sangat Disarankan)</option>
+                        <option value="fcpe">⚡ fcpe (Fast & Clean)</option>
+                        <option value="crepe">🎯 crepe (Accurate)</option>
+                        <option value="harvest">🎸 harvest (Bagus untuk nada rendah)</option>
+                        <option value="pm">📉 pm (Cepat tapi kasar)</option>
+                    </select>
+                    <div class="control-hint">Menentukan cara AI membaca pitch. <strong>rmvpe</strong> = kualitas terbaik, minim artifact robot.</div>
                 </div>
 
-                <div class="control-group">
-                    <div class="control-label">
-                        <span>🛡️ Protect</span>
-                        <input type="number" id="protectValue" class="control-value-input" value="0.33" min="0" max="0.5" step="0.01">
-                    </div>
-                    <input type="range" id="protect" min="0" max="0.5" value="0.33" step="0.01">
-                    <div class="control-hint">Lindungi konsonan & breathiness</div>
-                </div>
-
-                <div class="control-group" style="grid-column: span 2;">
-                    <div class="control-label">
-                        <span>🎚️ Filter Radius</span>
-                        <input type="number" id="filterRadiusValue" class="control-value-input" value="3" min="0" max="7" step="1">
-                    </div>
-                    <input type="range" id="filterRadius" min="0" max="7" value="3" step="1">
-                    <div class="control-hint">Smoothing pitch (0 = off, 3 = default)</div>
+                <!-- Auto Enhance -->
+                <div class="control-group full-width enhance-group">
+                    <label class="enhance-toggle">
+                        <input type="checkbox" id="autoEnhance" checked>
+                        <span class="toggle-switch"></span>
+                        <div class="toggle-text">
+                            <strong>🎧 Auto Enhance (Pro Audio)</strong>
+                            <div class="control-hint">Bass cut 60Hz + normalization + soft limiter = suara bersih dan "nendang" di speaker apapun.</div>
+                        </div>
+                    </label>
                 </div>
             </div>
         </section>
 
-        <!-- ════════ CONVERT ════════ -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- CONVERT BUTTON -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
         <button class="btn btn-primary btn-block" id="convertBtn">🚀 Convert ke Suara Model</button>
 
-        <!-- ════════ LOADING ════════ -->
+        <!-- Loading State -->
         <div class="loading" id="loading">
             <div class="spinner"></div>
-            <div>Mengkonversi dengan RVC AI…</div>
-            <div class="loading-sub">(±10–60 detik di CPU)</div>
-            <div class="progress-bar">
-                <div class="progress-fill"></div>
-            </div>
+            <div>Mengkonversi dengan RVC AI...</div>
+            <div class="loading-sub">(±10–60 detik tergantung durasi audio)</div>
+            <div class="progress-bar"><div class="progress-fill"></div></div>
         </div>
 
-        <!-- ════════ RESULT ════════ -->
+        <!-- Result Section -->
         <div class="result" id="result">
             <h3>✅ Hasil Konversi</h3>
             <div class="result-model-name" id="resultModelName">🎤 Model: —</div>
@@ -187,14 +180,13 @@
             </div>
         </div>
 
-        <!-- ════════ ERROR ════════ -->
-        <div class="error" id="errorMessage"></div>
+        <div class="error" id="error"></div>
     </main>
 
     <footer class="footer">
-        RVC Voice Changer · open-source
+        <p>RVC Voice Changer Pro · Smart Model Pairing</p>
     </footer>
 
-    <script src="static/script.js"></script>
+    <script src="/static/script.js"></script>
 </body>
 </html>

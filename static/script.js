@@ -1,29 +1,21 @@
 // ═══════════════════════════════════════════════════════════
-// VOICE CHANGER AI — Frontend Logic
-// Clean, modular, no inline styles.
+// VOICE CHANGER PRO — Frontend Logic (Applio-style Pairing)
 // ═══════════════════════════════════════════════════════════
-
 'use strict';
 
-/* ── Tiny helpers ────────────────────────────────────────── */
 const $  = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-const DEFAULTS = { pitch: 0, indexRate: 0.75, rmsMixRate: 0.25, protect: 0.33, filterRadius: 3 };
+const DEFAULTS = { pitch: 0, indexRate: 0.75, f0Method: 'rmvpe', autoEnhance: true };
 
-/* ── Toast (uses CSS classes, not inline styles) ─────────── */
-const TOAST_ICONS = { success: '✅', error: '❌', info: 'ℹ️' };
-
-function showToast(message, type = 'info', timeout = 3800) {
+const TOAST_ICONS = { success: '✅', error: '❌', info: 'ℹ️', warning: '⚠️' };
+function showToast(message, type = 'info', timeout = 4000) {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-
     const icon = document.createElement('span');
     icon.className = 'toast-icon';
     icon.textContent = TOAST_ICONS[type] || TOAST_ICONS.info;
-
     const msg = document.createElement('span');
     msg.textContent = message;
-
     toast.append(icon, msg);
     document.body.appendChild(toast);
 
@@ -35,13 +27,11 @@ function showToast(message, type = 'info', timeout = 3800) {
     toast.addEventListener('click', () => { clearTimeout(t); remove(); });
 }
 
-/* ── Theme toggle (persisted) ────────────────────────────── */
 function initTheme() {
     const saved = localStorage.getItem('vc-theme');
     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
     const theme = saved || (prefersDark ? 'dark' : 'light');
     applyTheme(theme);
-
     const btn = $('#themeToggle');
     if (btn) {
         btn.addEventListener('click', () => {
@@ -58,7 +48,6 @@ function applyTheme(theme) {
     if (btn) btn.textContent = theme === 'dark' ? '🌙' : '☀️';
 }
 
-/* ── Generic fetch wrapper ───────────────────────────────── */
 async function api(url, { method = 'GET', body, formEntries, okMessage } = {}) {
     try {
         let res;
@@ -66,7 +55,9 @@ async function api(url, { method = 'GET', body, formEntries, okMessage } = {}) {
             res = await fetch(url, { method, body });
         } else if (formEntries) {
             const fd = new FormData();
-            for (const [k, v] of Object.entries(formEntries)) fd.append(k, v);
+            for (const [k, v] of Object.entries(formEntries)) {
+                if (v !== null && v !== undefined) fd.append(k, v);
+            }
             res = await fetch(url, { method, body: fd });
         } else {
             res = await fetch(url, { method });
@@ -85,17 +76,40 @@ async function api(url, { method = 'GET', body, formEntries, okMessage } = {}) {
     }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   MODEL MANAGEMENT
-   ═══════════════════════════════════════════════════════════ */
+// ═══════════════════════════════════════════════════════════
+// MODEL MANAGEMENT (Applio-style)
+// ═══════════════════════════════════════════════════════════
+
+let currentModelData = null;
+
 async function loadModels() {
     const { ok, data } = await api('/models');
     if (!ok) {
         showToast('Gagal memuat daftar model', 'error');
         return;
     }
+    currentModelData = data;
     updateModelSelectors(data.models, data.current_pth, data.current_index);
-    updateModelList(data.models, data.current_pth);
+    updateModelList(data.paired_models, data.orphaned_indices, data.current_pth, data.current_index);
+    updateModelStatus(data);
+}
+
+function updateModelStatus(data) {
+    const statusEl = $('#modelStatus');
+    if (!statusEl) return;
+    
+    const pthCount = data.models?.pth?.length || 0;
+    const indexCount = data.models?.index?.length || 0;
+    const pairedCount = data.paired_models?.filter(m => m.has_index)?.length || 0;
+    
+    if (pthCount === 0) {
+        statusEl.innerHTML = `<span class="status-warn">● Belum ada model — upload file .pth untuk memulai</span>`;
+    } else {
+        statusEl.innerHTML = `
+            <span class="status-ok">● ${pthCount} model tersedia</span>
+            ${pairedCount > 0 ? `<span class="status-index"> • ${pairedCount} dengan index</span>` : ''}
+        `;
+    }
 }
 
 function updateModelSelectors(models, currentPth, currentIndex) {
@@ -104,7 +118,7 @@ function updateModelSelectors(models, currentPth, currentIndex) {
     if (!pthSelect || !indexSelect) return;
 
     pthSelect.innerHTML = '<option value="">— Pilih Model —</option>';
-    indexSelect.innerHTML = '<option value="null">— Tanpa Index —</option>';
+    indexSelect.innerHTML = '<option value="null">— Auto (Cari Index) —</option>';
 
     (models.pth || []).forEach(pth => {
         const opt = document.createElement('option');
@@ -117,25 +131,21 @@ function updateModelSelectors(models, currentPth, currentIndex) {
     (models.index || []).forEach(index => {
         const opt = document.createElement('option');
         opt.value = index;
-        opt.textContent = index.replace('.index', '');
+        opt.textContent = index.replace('.index', '').split('/').pop();
         if (index === currentIndex) opt.selected = true;
         indexSelect.appendChild(opt);
     });
-
-    const statusEl = $('#modelStatus');
-    if (statusEl) {
-        const count = models.pth?.length || 0;
-        statusEl.innerHTML = count
-            ? `<span class="status-ok">● ${count} model tersedia</span>`
-            : `<span class="status-warn">● Belum ada model — upload file .pth</span>`;
-    }
 }
 
-function updateModelList(models, currentPth) {
+// ═══════════════════════════════════════════════════════════
+// MODEL LIST RENDERING (Combined Cards Like Applio)
+// ═══════════════════════════════════════════════════════════
+
+function updateModelList(pairedModels, orphanedIndices, currentPth, currentIndex) {
     const el = $('#modelList');
     if (!el) return;
-
-    if (!models.pth?.length) {
+    
+    if (!pairedModels?.length && !orphanedIndices?.length) {
         el.innerHTML = `
             <div class="empty-state">
                 <div class="empty-icon">📭</div>
@@ -145,40 +155,168 @@ function updateModelList(models, currentPth) {
         return;
     }
 
-    el.innerHTML = models.pth.map(pth => {
-        const isActive = pth === currentPth;
-        const baseName = pth.replace('.pth', '');
-        const indexFile = models.index.find(idx => idx.replace('.index', '') === baseName);
-
+    // Render paired models (with or without index)
+    const modelCards = pairedModels.map(model => {
+        const isActive = model.is_active;
+        const hasIndex = model.has_index;
+        const baseName = model.name;
+        
         return `
-            <div class="model-item ${isActive ? 'active' : ''}" data-model="${pth}">
-                <span class="model-icon">${isActive ? '🎤' : '🎵'}</span>
-                <div class="model-info">
-                    <div class="model-name">${baseName}</div>
-                    ${indexFile ? `<div class="model-index">📇 ${indexFile}</div>` : ''}
+            <div class="model-card ${isActive ? 'active' : ''} ${hasIndex ? 'has-index' : 'no-index'}" 
+                 data-pth="${model.pth}" 
+                 data-index="${model.index || ''}"
+                 onclick="selectModelCard(this)">
+                <div class="model-card-header">
+                    <div class="model-card-icon">
+                        ${isActive ? '🎤' : '🎵'}
+                    </div>
+                    <div class="model-card-info">
+                        <div class="model-card-name">${escapeHtml(baseName)}</div>
+                        <div class="model-card-meta">
+                            ${hasIndex 
+                                ? `<span class="meta-badge meta-index">📇 ${escapeHtml(getShortIndexName(model.index))}</span>` 
+                                : '<span class="meta-badge meta-no-index">⚠️ Tanpa Index</span>'
+                            }
+                        </div>
+                    </div>
+                    ${isActive ? '<span class="active-badge">AKTIF</span>' : ''}
                 </div>
-                ${isActive ? '<span class="badge">active</span>' : ''}
-                <button class="btn-delete" data-delete="${pth}" title="Hapus model" ${isActive ? 'disabled' : ''}>🗑</button>
+                <div class="model-card-actions">
+                    <button class="btn-card btn-load" onclick="event.stopPropagation(); loadModelByName('${escapeHtml(baseName)}')" 
+                            ${isActive ? 'disabled' : ''} title="Load model ini">
+                        ${isActive ? '✓ Aktif' : '▶ Load'}
+                    </button>
+                    <button class="btn-card btn-delete" onclick="event.stopPropagation(); deleteModel('${model.pth}')" 
+                            ${isActive ? 'disabled' : ''} title="Hapus model">
+                        🗑️
+                    </button>
+                    ${hasIndex ? `
+                        <button class="btn-card btn-delete-index" onclick="event.stopPropagation(); deleteModel('${model.index}')" 
+                                ${isActive ? 'disabled' : ''} title="Hapus index saja">
+                            🗑️ Index
+                        </button>
+                    ` : ''}
+                </div>
             </div>`;
     }).join('');
+
+    // Render orphaned indices (index tanpa .pth)
+    const orphanCards = (orphanedIndices || []).map(orphan => {
+        return `
+            <div class="model-card orphan" data-index="${orphan.index}">
+                <div class="model-card-header">
+                    <div class="model-card-icon">📇</div>
+                    <div class="model-card-info">
+                        <div class="model-card-name">${escapeHtml(orphan.name)}</div>
+                        <div class="model-card-meta">
+                            <span class="meta-badge meta-orphan">⚠️ Index tanpa model</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="model-card-actions">
+                    <button class="btn-card btn-delete" onclick="event.stopPropagation(); deleteModel('${orphan.index}')" title="Hapus index">
+                        🗑️
+                    </button>
+                </div>
+            </div>`;
+    }).join('');
+
+    el.innerHTML = modelCards + orphanCards;
 }
+
+function getShortIndexName(indexPath) {
+    if (!indexPath) return '';
+    return indexPath.split('/').pop().replace('.index', '');
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// ═══════════════════════════════════════════════════════════
+// MODEL ACTIONS
+// ═══════════════════════════════════════════════════════════
+
+function selectModelCard(card) {
+    // Remove previous selection
+    $$('.model-card.selected').forEach(c => c.classList.remove('selected'));
+    card.classList.add('selected');
+    
+    // Update selectors to match
+    const pth = card.dataset.pth;
+    const index = card.dataset.index;
+    
+    const pthSelect = $('#pthModel');
+    const indexSelect = $('#indexModel');
+    
+    if (pthSelect && pth) pthSelect.value = pth;
+    if (indexSelect) indexSelect.value = index || 'null';
+}
+
+async function loadModelByName(modelName) {
+    if (!modelName) return;
+    
+    showToast(`Memuat model "${modelName}"...`, 'info');
+    
+    const { ok, error, data } = await api('/set_model_by_name', {
+        method: 'POST',
+        formEntries: { model_name: modelName },
+        okMessage: 'Load model'
+    });
+    
+    if (ok) {
+        showToast(`✓ Model "${modelName}" berhasil dimuat${data.index ? ' dengan index' : ''}`, 'success');
+        await loadModels();
+    }
+}
+
+window.selectModelCard = selectModelCard;
+window.loadModelByName = loadModelByName;
 
 async function uploadModel(file) {
     if (!file) return;
-    showToast(`Mengunggah ${file.name}…`, 'info');
-
+    showToast(`Mengunggah ${file.name}...`, 'info');
+    
     const fd = new FormData();
     fd.append('file', file);
 
     const { ok, data, error } = await api('/models/upload', {
-        method: 'POST',
-        body: fd,
-        okMessage: 'Upload',
+        method: 'POST', body: fd, okMessage: 'Upload',
     });
 
     if (ok) {
         const kind = file.name.endsWith('.pth') ? '🧠 Model' : '📇 Index';
-        showToast(`${kind} "${file.name}" berhasil (${data.size_mb} MB)`, 'success');
+        let message = `${kind} "${file.name}" berhasil (${data.size_mb} MB)`;
+        
+        if (data.has_pair) {
+            message += ` ✓ Terhubung dengan pasangan!`;
+        }
+        
+        showToast(message, 'success');
+        await loadModels();
+    }
+}
+
+async function uploadModelPair(pthFile, indexFile) {
+    if (!pthFile && !indexFile) return;
+    
+    showToast('Mengunggah pair model...', 'info');
+    
+    const fd = new FormData();
+    if (pthFile) fd.append('pth_file', pthFile);
+    if (indexFile) fd.append('index_file', indexFile);
+
+    const { ok, data, error } = await api('/models/upload-pair', {
+        method: 'POST', body: fd, okMessage: 'Upload pair',
+    });
+
+    if (ok) {
+        const results = data.uploaded || [];
+        let message = '✓ Upload berhasil: ';
+        message += results.map(r => `${r.filename} (${r.size_mb} MB)`).join(', ');
+        showToast(message, 'success');
         await loadModels();
     }
 }
@@ -186,65 +324,69 @@ async function uploadModel(file) {
 async function deleteModel(filename) {
     if (!filename) return;
     if (!confirm(`Yakin ingin menghapus "${filename}"?`)) return;
-
+    
     const { ok, error } = await api(`/models/${encodeURIComponent(filename)}`, {
-        method: 'DELETE',
-        okMessage: 'Hapus model',
+        method: 'DELETE', okMessage: 'Hapus model',
     });
+
     if (ok) {
-        showToast(`"${filename}" dihapus`, 'success');
+        showToast(`"${filename}" berhasil dihapus`, 'success');
         await loadModels();
+    } else {
+        showToast(`Gagal hapus: ${error}`, 'error');
     }
 }
+
+window.deleteModel = deleteModel;
 
 async function applyModel() {
     const pth = $('#pthModel')?.value;
-    const index = $('#indexModel')?.value;
-    if (!pth) {
-        showToast('Pilih model .pth terlebih dahulu', 'error');
-        return;
+    let index = $('#indexModel')?.value;
+    
+    if (!pth) { 
+        showToast('Pilih model .pth terlebih dahulu', 'error'); 
+        return; 
     }
-
-    showToast('Memuat model…', 'info');
-    const { ok, error } = await api('/set_model', {
+    
+    // If "Auto" selected, let backend find the index
+    if (index === 'null') {
+        index = null;
+    }
+    
+    showToast('Memuat model...', 'info');
+    
+    const { ok, error, data } = await api('/set_model', {
         method: 'POST',
-        formEntries: { pth, index: index === 'null' ? '' : index },
+        formEntries: { pth, index },
         okMessage: 'Load model',
     });
-
+    
     if (ok) {
-        showToast(`Model "${pth.replace('.pth', '')}" aktif`, 'success');
+        const indexInfo = data.index ? ' dengan index' : ' (tanpa index)';
+        showToast(`✓ Model "${pth.replace('.pth', '')}" aktif${indexInfo}`, 'success');
         await loadModels();
     }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   AUDIO UPLOAD & CONVERSION
-   ═══════════════════════════════════════════════════════════ */
-let selectedAudioFile = null;
+// ═══════════════════════════════════════════════════════════
+// AUDIO UPLOAD & CONVERSION
+// ═══════════════════════════════════════════════════════════
 
-const VALID_AUDIO_EXT = ['.mp3', '.wav', '.m4a', '.aac'];
-const VALID_AUDIO_TYPES = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/aac', 'audio/x-m4a'];
+let selectedAudioFile = null;
+const VALID_AUDIO_EXT = ['.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg'];
+const VALID_AUDIO_TYPES = ['audio/mpeg', 'audio/wav', 'audio/mp4', 'audio/aac', 'audio/x-m4a', 'audio/flac', 'audio/ogg'];
 
 function setupFileUpload() {
     const area = $('#uploadArea');
     const input = $('#audioFile');
     if (!area || !input) return;
-
+    
     area.addEventListener('click', () => input.click());
-
-    input.addEventListener('change', e => {
-        if (e.target.files.length) handleAudioFile(e.target.files[0]);
-    });
-
-    area.addEventListener('dragover', e => {
-        e.preventDefault();
-        area.classList.add('dragover');
-    });
+    input.addEventListener('change', e => { if (e.target.files.length) handleAudioFile(e.target.files[0]); });
+    area.addEventListener('dragover', e => { e.preventDefault(); area.classList.add('dragover'); });
     area.addEventListener('dragleave', () => area.classList.remove('dragover'));
     area.addEventListener('drop', e => {
-        e.preventDefault();
-        area.classList.remove('dragover');
+        e.preventDefault(); area.classList.remove('dragover');
         if (e.dataTransfer.files.length) handleAudioFile(e.dataTransfer.files[0]);
     });
 }
@@ -252,20 +394,18 @@ function setupFileUpload() {
 function handleAudioFile(file) {
     const hasValidExt = VALID_AUDIO_EXT.some(ext => file.name.toLowerCase().endsWith(ext));
     if (!VALID_AUDIO_TYPES.includes(file.type) && !hasValidExt) {
-        showToast('Format tidak didukung. Gunakan MP3, WAV, M4A, atau AAC.', 'error');
+        showToast('Format tidak didukung. Gunakan MP3, WAV, M4A, FLAC, atau OGG.', 'error');
         return;
     }
-
+    
     selectedAudioFile = file;
-
     const area = $('#uploadArea');
     const nameEl = $('.file-name');
     const iconEl = $('.upload-icon');
-
+    
     area?.classList.add('has-file');
     if (nameEl) nameEl.textContent = `📎 ${file.name} · ${(file.size / 1024 / 1024).toFixed(2)} MB`;
     if (iconEl) iconEl.textContent = '🎵';
-
     showAudioPreview(file);
     showToast('Audio siap dikonversi', 'success');
 }
@@ -283,34 +423,31 @@ async function convertVoice() {
         showToast('Upload file audio terlebih dahulu', 'error');
         return;
     }
-
+    
     const pitch = parseInt($('#pitch')?.value || 0, 10);
     const indexRate = parseFloat($('#indexRate')?.value || 0.75);
-    const filterRadius = parseInt($('#filterRadius')?.value || 3, 10);
-    const rmsMixRate = parseFloat($('#rmsMixRate')?.value || 0.25);
-    const protect = parseFloat($('#protect')?.value || 0.33);
+    const f0Method = $('#f0Method')?.value || 'rmvpe';
+    const autoEnhance = $('#autoEnhance')?.checked ? '1' : '0';
 
     const fd = new FormData();
     fd.append('audio', selectedAudioFile);
     fd.append('pitch', pitch);
     fd.append('index_rate', indexRate);
-    fd.append('filter_radius', filterRadius);
-    fd.append('rms_mix_rate', rmsMixRate);
-    fd.append('protect', protect);
+    fd.append('f0_method', f0Method);
+    fd.append('auto_enhance', autoEnhance);
 
     const loadingEl = $('#loading');
     const resultEl = $('#result');
     loadingEl?.classList.add('active');
     resultEl?.classList.remove('active');
-
-    showToast('Sedang mengkonversi…', 'info');
+    showToast('Sedang mengkonversi audio dengan kualitas terbaik...', 'info');
 
     const { ok, data, error } = await api('/convert', { method: 'POST', body: fd });
     loadingEl?.classList.remove('active');
 
     if (ok) {
         showResult(data);
-        showToast('Konversi berhasil!', 'success');
+        showToast('✓ Konversi berhasil!', 'success');
     } else {
         showToast(`Konversi gagal: ${error}`, 'error');
     }
@@ -320,11 +457,18 @@ function showResult(data) {
     const resultEl = $('#result');
     const audio = $('#resultAudio');
     const nameEl = $('#resultModelName');
+    
     if (!resultEl || !audio) return;
-
+    
     audio.src = data.audio;
-    if (nameEl) nameEl.textContent = `🎤 Model: ${data.model_name}`;
-
+    if (nameEl) {
+        let info = `🎤 Model: ${data.model_name}`;
+        if (data.index_used) {
+            info += ` • 📇 ${getShortIndexName(data.index_used)}`;
+        }
+        nameEl.textContent = info;
+    }
+    
     resultEl.classList.add('active');
     resultEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -332,6 +476,7 @@ function showResult(data) {
 function downloadResult() {
     const audio = $('#resultAudio');
     if (!audio?.src) return;
+    
     const link = document.createElement('a');
     link.href = audio.src;
     link.download = `converted_${Date.now()}.wav`;
@@ -339,18 +484,20 @@ function downloadResult() {
     showToast('Download dimulai', 'success');
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SLIDER CONTROLS
-   ═══════════════════════════════════════════════════════════ */
+// ═══════════════════════════════════════════════════════════
+// PARAMETER CONTROLS
+// ═══════════════════════════════════════════════════════════
+
 function setupSliders() {
     $$('input[type="range"]').forEach(slider => {
         const valueInput = document.getElementById(slider.id + 'Value');
         if (!valueInput) return;
-
+        
         slider.addEventListener('input', e => {
             valueInput.value = e.target.value;
             validateInput(valueInput);
         });
+        
         valueInput.addEventListener('input', e => {
             slider.value = e.target.value;
             validateInput(valueInput);
@@ -366,50 +513,87 @@ function validateInput(input) {
 }
 
 function resetParams() {
-    $('#pitch').value = DEFAULTS.pitch;          $('#pitchValue').value = DEFAULTS.pitch;
-    $('#indexRate').value = DEFAULTS.indexRate;  $('#indexRateValue').value = DEFAULTS.indexRate;
-    $('#rmsMixRate').value = DEFAULTS.rmsMixRate; $('#rmsMixRateValue').value = DEFAULTS.rmsMixRate;
-    $('#protect').value = DEFAULTS.protect;      $('#protectValue').value = DEFAULTS.protect;
-    $('#filterRadius').value = DEFAULTS.filterRadius; $('#filterRadiusValue').value = DEFAULTS.filterRadius;
+    $('#pitch').value = DEFAULTS.pitch;
+    $('#pitchValue').value = DEFAULTS.pitch;
+    $('#indexRate').value = DEFAULTS.indexRate;
+    $('#indexRateValue').value = DEFAULTS.indexRate;
+    $('#f0Method').value = DEFAULTS.f0Method;
+    $('#autoEnhance').checked = DEFAULTS.autoEnhance;
     $$('.control-value-input').forEach(el => el.classList.remove('out-of-range'));
     showToast('Parameter direset ke default', 'info', 2000);
 }
 
-/* ═══════════════════════════════════════════════════════════
-   INIT
-   ═══════════════════════════════════════════════════════════ */
+// ═══════════════════════════════════════════════════════════
+// MODEL UPLOAD HANDLER (Support Multiple Files)
+// ═══════════════════════════════════════════════════════════
+
+function setupModelUpload() {
+    const modelFileInput = $('#modelFileInput');
+    const uploadBtn = $('#uploadModelBtn');
+    
+    if (uploadBtn) {
+        uploadBtn.addEventListener('click', () => {
+            modelFileInput?.click();
+        });
+    }
+    
+    if (modelFileInput) {
+        modelFileInput.setAttribute('multiple', '');
+        modelFileInput.addEventListener('change', async e => {
+            const files = Array.from(e.target.files);
+            if (!files.length) return;
+            
+            // Separate .pth and .index files
+            const pthFiles = files.filter(f => f.name.endsWith('.pth'));
+            const indexFiles = files.filter(f => f.name.endsWith('.index'));
+            
+            if (pthFiles.length === 1 && indexFiles.length === 1) {
+                // Upload as pair
+                await uploadModelPair(pthFiles[0], indexFiles[0]);
+            } else {
+                // Upload individually
+                for (const file of files) {
+                    await uploadModel(file);
+                }
+            }
+            
+            e.target.value = '';
+        });
+    }
+}
+
+// ═══════════════════════════════════════════════════════════
+// INITIALIZATION
+// ═══════════════════════════════════════════════════════════
+
 document.addEventListener('DOMContentLoaded', () => {
     initTheme();
     loadModels();
     setupFileUpload();
     setupSliders();
+    setupModelUpload();
 
-    // Event delegation for delete buttons inside model list
+    // Model list click delegation
     $('#modelList')?.addEventListener('click', e => {
         const btn = e.target.closest('[data-delete]');
-        if (btn) deleteModel(btn.dataset.delete);
+        if (btn) {
+            e.stopPropagation();
+            deleteModel(btn.dataset.delete);
+        }
     });
 
+    // Button handlers
     $('#applyModelBtn')?.addEventListener('click', applyModel);
-    $('#uploadModelBtn')?.addEventListener('click', () => $('#modelFileInput')?.click());
     $('#convertBtn')?.addEventListener('click', convertVoice);
     $('#downloadBtn')?.addEventListener('click', downloadResult);
     $('#resetBtn')?.addEventListener('click', () => location.reload());
     $('#resetParamsBtn')?.addEventListener('click', resetParams);
 
-    const modelFileInput = $('#modelFileInput');
-    modelFileInput?.addEventListener('change', e => {
-        if (e.target.files.length) uploadModel(e.target.files[0]);
-        e.target.value = '';
-    });
-
-    // Keyboard shortcut: Ctrl/Cmd + Enter to convert
+    // Keyboard shortcuts
     document.addEventListener('keydown', e => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
             convertVoice();
         }
     });
-
-    console.log('%c🎤 Voice Changer AI ready', 'color:#4f46e5;font-weight:bold');
 });

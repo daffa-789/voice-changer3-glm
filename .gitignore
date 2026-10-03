@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.venv/
+venv/
+env/
+
+# Outputs and temps
+outputs/
+temp/
+*.log
+
+# Model weights and indices (large binary files)
+models/*.pth
+models/*.index
+models/*.onnx
