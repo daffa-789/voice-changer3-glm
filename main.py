@@ -1,6 +1,7 @@
 import os
 import base64
 import tempfile
+import uuid
 import warnings
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -347,7 +348,9 @@ async def upload_model(file: UploadFile = File(...)):
 
     # Handle subfolder path (e.g., trained_index/filename.index)
     filename = file.filename
-    save_path = MODELS_DIR / filename
+    save_path = (MODELS_DIR / filename).resolve()
+    if not save_path.is_relative_to(MODELS_DIR.resolve()):
+        raise HTTPException(400, "Path traversal tidak diizinkan")
     
     # Create subfolder if needed
     save_path.parent.mkdir(parents=True, exist_ok=True)
@@ -416,7 +419,9 @@ async def upload_model_pair(
         if not pth_file.filename.endswith('.pth'):
             raise HTTPException(400, "File pertama harus .pth")
         
-        pth_path = MODELS_DIR / pth_file.filename
+        pth_path = (MODELS_DIR / pth_file.filename).resolve()
+        if not pth_path.is_relative_to(MODELS_DIR.resolve()):
+            raise HTTPException(400, "Path traversal tidak diizinkan")
         pth_path.parent.mkdir(parents=True, exist_ok=True)
         
         if pth_path.exists():
@@ -430,7 +435,9 @@ async def upload_model_pair(
         if not index_file.filename.endswith('.index'):
             raise HTTPException(400, "File kedua harus .index")
         
-        index_path = MODELS_DIR / index_file.filename
+        index_path = (MODELS_DIR / index_file.filename).resolve()
+        if not index_path.is_relative_to(MODELS_DIR.resolve()):
+            raise HTTPException(400, "Path traversal tidak diizinkan")
         index_path.parent.mkdir(parents=True, exist_ok=True)
         
         if index_path.exists():
@@ -442,9 +449,11 @@ async def upload_model_pair(
     
     return {"success": True, "uploaded": results}
 
-@app.delete("/models/{filename}")
+@app.delete("/models/{filename:path}")
 async def delete_model(filename: str):
-    file_path = MODELS_DIR / filename
+    file_path = (MODELS_DIR / filename).resolve()
+    if not file_path.is_relative_to(MODELS_DIR.resolve()):
+        raise HTTPException(400, "Path traversal tidak diizinkan")
     if not file_path.exists():
         raise HTTPException(404, "File tidak ditemukan")
 
@@ -539,8 +548,9 @@ async def convert_voice(
     temp_dir.mkdir(exist_ok=True)
 
     safe_name = Path(audio.filename).stem
-    input_path = temp_dir / f"in_{safe_name}.wav"
-    output_path = temp_dir / f"out_{safe_name}.wav"
+    req_id = uuid.uuid4().hex[:8]
+    input_path = temp_dir / f"in_{req_id}_{safe_name}.wav"
+    output_path = temp_dir / f"out_{req_id}_{safe_name}.wav"
 
     try:
         with open(input_path, "wb") as f:
